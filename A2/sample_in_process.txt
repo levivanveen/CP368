@@ -1,0 +1,9 @@
+uname -a
+uname
+fre -m
+ls -l -a -F
+pwd
+ls > redirected_output.txt
+uname --help
+whoami > redirected_output.txt
+uname --help > redirected_output.txt
