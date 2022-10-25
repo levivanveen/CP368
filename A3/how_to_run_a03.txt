@@ -1,0 +1,22 @@
+
+To rename makefile.mk to makefile, run:
+
+$mv Makefile.a3 Makefile
+
+Place makefile is in the same folder where your all .c files (named as mentioned in the assignment description) are and to compile run:
+
+$ make
+
+This will compile your all c programs in same folder for Question 1, Question 2 and Question 3. If you want to run Question 1 then use (make sure that your sample_in_sudoku.txt is in the same folder):
+
+$ make runq1
+
+For question 2, (make sure that your sample_in_schedule.txt is in the same folder) run:
+
+$ make runq2
+
+To clean out the directory, you can use:
+
+$make clean
+
+Some notes are already posted in previous lectures on Makefiles, In addition https://www.gnu.org/software/make/manual/html_node/Introduction.html has a decent reference on make files.
