@@ -22,7 +22,8 @@ Version     25-10-2022
 typedef struct parameters {
     int row;
     int col;
-    //char* arr[10][10];
+    char* arr[10][10];
+    int* threadArr[3][9];
 } parameters;
 
 void readSudoku(char* inFile, char arr[10][10]);
@@ -38,7 +39,7 @@ int main(int argc, char *argv[]) {
     }
 
     char inFile[255], arr[10][10];
-    //, threadArr[3][9];
+    int threadArr[3][9];
     int gridRow = 0, gridCol = 0;
     inFile[0] = '\0';
 
@@ -51,44 +52,49 @@ int main(int argc, char *argv[]) {
     // 1 thread per column, 1 thread per line, 1 thread per 3x3 -> 27 threads
     pthread_t tid[27];
     // Idea, create array of 27 parameters, then free them all at the end
+    parameters *p[27];
     
 
     for (int i = 0; i < 9; i++) {
-        parameters *row = (parameters *)malloc(sizeof(parameters));
-        parameters *col = (parameters *)malloc(sizeof(parameters));
-        parameters *grid = (parameters *)malloc(sizeof(parameters));
+        p[i * 3] = malloc(sizeof(parameters)); // Row
+        p[(i * 3) + 1] = malloc(sizeof(parameters)); // Column
+        p[(i * 3) + 2] = malloc(sizeof(parameters)); // Grid
 
         // Row checkers use i like arr[i]
-        row->row = i;
-        row->col = 0;
-        //row->arr = arr;
-        pthread_create(&tid[i * 3], NULL, checkRow, (void *)row);
+        p[i * 3]->row = i;
+        p[i * 3]->col = 0;
+        p[i * 3]->threadArr = &threadArr;
+        p[i * 3]->arr = &arr;
+        pthread_create(&tid[i * 3], NULL, checkRow, (void *)p[i * 3]);
 
         // Column checkers use i like arr[0][i]
-        col->col = i;
-        col->row = 0;
-        //col->arr = arr;
-        pthread_create(&tid[(i * 3) + 1], NULL, checkCol, (void *)col);
+        p[(i * 3) + 1]->col = i;
+        p[(i * 3) + 1]->row = 0;
+        p[(i * 3) + 1]->threadArr = threadArr;
+        p[(i * 3) + 1]->arr = arr;
+        pthread_create(&tid[(i * 3) + 1], NULL, checkCol, (void *)p[(i * 3) + 1]);
 
-        grid->row = gridRow;
-        grid->col = gridCol;
+        p[(i * 3) + 2]->row = gridRow;
+        p[(i * 3) + 2]->col = gridCol;
+        p[(i * 3) + 2]->arr = arr;
+        p[(i * 3) + 2]->threadArr = threadArr;
         gridCol++;
-        //grid->arr = arr;
         if (gridCol == 3) {
             gridRow++;
             gridCol = 0;
         }
-        pthread_create(&tid[(i * 3) + 2], NULL, checkGrid, (void *)grid);
+        pthread_create(&tid[(i * 3) + 2], NULL, checkGrid, (void *)p[(i * 3) + 2]);
 
-        free(row);
-        row = NULL;
-        free(col);
-        col = NULL;
-        free(grid);
-        grid = NULL;
+        // Wait for all threads to finish before allowing next iteration
+        pthread_join(tid[i * 3], NULL);
+        pthread_join(tid[(i * 3) + 1], NULL);
+        pthread_join(tid[(i * 3) + 2], NULL);
+        puts(" ");
     }
     for (int i = 0; i < 27; i++) {
-        pthread_join(tid[i], NULL);
+        //pthread_join(tid[i], NULL);
+        free(p[i]);
+        p[i] = NULL;
     }
     return 0;
 }
@@ -131,17 +137,18 @@ void readSudoku(char* inFile, char arr[10][10]) {
 }
 
 void* checkRow(void* arg) {
-    printf("ok in check row%d\n", ((struct parameters* )arg)->row);
+    printf("checl row%d\n", ((struct parameters* )arg)->row);
+    printf("ok lets check the arr\n%s\n", ((struct parameters *)arg)->arr);
     return NULL;
 }
 
 void* checkCol(void* arg) {
-    printf("ok in check %d col\n", ((struct parameters* )arg)->col);
+    printf("check col %d\n", ((struct parameters* )arg)->col);
     return NULL;
 }
 
 void* checkGrid(void* arg) {
-    printf("%d grid row", ((struct parameters*)arg)->row);
-    printf("%d grid col\n", ((struct parameters*)arg)->col);
+    printf("grid row %d, ", ((struct parameters*)arg)->row);
+    printf("col grid %d\n", ((struct parameters*)arg)->col);
     return NULL;
 }
