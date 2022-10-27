@@ -22,8 +22,8 @@ Version     25-10-2022
 typedef struct parameters {
     int row;
     int col;
-    char* arr[10][10];
-    int* threadArr[3][9];
+    char* arr;
+    int* threadArr;
 } parameters;
 
 void readSudoku(char* inFile, char arr[10][10]);
@@ -56,39 +56,45 @@ int main(int argc, char *argv[]) {
     
 
     for (int i = 0; i < 9; i++) {
-        p[i * 3] = malloc(sizeof(parameters)); // Row
-        p[(i * 3) + 1] = malloc(sizeof(parameters)); // Column
-        p[(i * 3) + 2] = malloc(sizeof(parameters)); // Grid
+        // Create varibles so its easier assign
+        int row = i * 3;
+        int col = (i * 3) + 1;
+        int grid = (i * 3) + 2;
 
-        // Row checkers use i like arr[i]
-        p[i * 3]->row = i;
-        p[i * 3]->col = 0;
-        p[i * 3]->threadArr = &threadArr;
-        p[i * 3]->arr = &arr;
-        pthread_create(&tid[i * 3], NULL, checkRow, (void *)p[i * 3]);
+        p[row] = malloc(sizeof(parameters)); // Row
+        p[col] = malloc(sizeof(parameters)); // Column
+        p[grid] = malloc(sizeof(parameters)); // Grid
 
-        // Column checkers use i like arr[0][i]
-        p[(i * 3) + 1]->col = i;
-        p[(i * 3) + 1]->row = 0;
-        p[(i * 3) + 1]->threadArr = threadArr;
-        p[(i * 3) + 1]->arr = arr;
-        pthread_create(&tid[(i * 3) + 1], NULL, checkCol, (void *)p[(i * 3) + 1]);
+        // Check row
+        p[row]->row = i;
+        p[row]->col = 0;
+        p[row]->threadArr = threadArr[0];
+        p[row]->arr = arr[0];
+        pthread_create(&tid[row], NULL, checkRow, (void *)p[row]);
 
-        p[(i * 3) + 2]->row = gridRow;
-        p[(i * 3) + 2]->col = gridCol;
-        p[(i * 3) + 2]->arr = arr;
-        p[(i * 3) + 2]->threadArr = threadArr;
+        // Check column
+        p[col]->col = i;
+        p[col]->row = 0;
+        p[col]->threadArr = threadArr[0];
+        p[col]->arr = arr[0];
+        pthread_create(&tid[col], NULL, checkCol, (void *)p[col]);
+
+        // Check grid
+        p[grid]->row = gridRow;
+        p[grid]->col = gridCol;
+        p[grid]->arr = arr[0];
+        p[grid]->threadArr = threadArr[0];
         gridCol++;
         if (gridCol == 3) {
             gridRow++;
             gridCol = 0;
         }
-        pthread_create(&tid[(i * 3) + 2], NULL, checkGrid, (void *)p[(i * 3) + 2]);
+        pthread_create(&tid[grid], NULL, checkGrid, (void *)p[grid]);
 
         // Wait for all threads to finish before allowing next iteration
-        pthread_join(tid[i * 3], NULL);
-        pthread_join(tid[(i * 3) + 1], NULL);
-        pthread_join(tid[(i * 3) + 2], NULL);
+        pthread_join(tid[row], NULL);
+        pthread_join(tid[col], NULL);
+        pthread_join(tid[grid], NULL);
         puts(" ");
     }
     for (int i = 0; i < 27; i++) {
@@ -137,18 +143,36 @@ void readSudoku(char* inFile, char arr[10][10]) {
 }
 
 void* checkRow(void* arg) {
-    printf("checl row%d\n", ((struct parameters* )arg)->row);
-    printf("ok lets check the arr\n%s\n", ((struct parameters *)arg)->arr);
+    // Row checkers use arr[row][0-9]
+    char numbers[] = "1,2,3,4,5,6,7,8,9";
+    char currentNum;
+    int row = ((struct parameters* )arg)->row;
+
+    // Keep looping until all 9 chars are found
+    for (int i = 0; i < 9; i++) {
+        currentNum = *(((struct parameters* )arg)->arr + row*9 + i + row);
+        // Check if the current number is in the string
+        if (strchr(numbers, currentNum) != NULL) {
+            printf("current num: %c\n", currentNum);
+        } else {
+            // Invalid row, exit thread
+            
+        }
+    }
+
+    //printf("checl row%d\n", ((struct parameters* )arg)->row);
+    //printf("ok lets check the arr\n%s\n", ((struct parameters *)arg)->arr);
     return NULL;
 }
 
 void* checkCol(void* arg) {
-    printf("check col %d\n", ((struct parameters* )arg)->col);
+    // Column checkers use arr[0-9][col]
+    //printf("check col %d\n", ((struct parameters* )arg)->col);
     return NULL;
 }
 
 void* checkGrid(void* arg) {
-    printf("grid row %d, ", ((struct parameters*)arg)->row);
-    printf("col grid %d\n", ((struct parameters*)arg)->col);
+    //printf("grid row %d, ", ((struct parameters*)arg)->row);
+    //printf("col grid %d\n", ((struct parameters*)arg)->col);
     return NULL;
 }
