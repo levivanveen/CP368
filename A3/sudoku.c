@@ -27,6 +27,8 @@ typedef struct parameters {
 } parameters;
 
 void readSudoku(char* inFile, char arr[10][10]);
+void printSudoku(char arr[10][10]);
+void checkValidSudoku(int arr[3][9]);
 void* checkRow(void* arg);
 void* checkCol(void* arg);
 void* checkGrid(void* arg);
@@ -48,10 +50,10 @@ int main(int argc, char *argv[]) {
     strcat(inFile, argv[1]);
 
     readSudoku(inFile, arr);
+    printSudoku(arr);
 
     // 1 thread per column, 1 thread per line, 1 thread per 3x3 -> 27 threads
     pthread_t tid[27];
-    // Idea, create array of 27 parameters, then free them all at the end
     parameters *p[27];
     
 
@@ -80,8 +82,8 @@ int main(int argc, char *argv[]) {
         pthread_create(&tid[col], NULL, checkCol, (void *)p[col]);
 
         // Check grid
-        p[grid]->row = gridRow;
-        p[grid]->col = gridCol;
+        p[grid]->row = gridRow * 3;
+        p[grid]->col = gridCol * 3;
         p[grid]->arr = arr[0];
         p[grid]->threadArr = threadArr[0];
         gridCol++;
@@ -90,18 +92,15 @@ int main(int argc, char *argv[]) {
             gridCol = 0;
         }
         pthread_create(&tid[grid], NULL, checkGrid, (void *)p[grid]);
-
-        // Wait for all threads to finish before allowing next iteration
-        pthread_join(tid[row], NULL);
-        pthread_join(tid[col], NULL);
-        pthread_join(tid[grid], NULL);
-        puts(" ");
     }
+
+    // Wait for all threads to exit, then free all parameters
     for (int i = 0; i < 27; i++) {
-        //pthread_join(tid[i], NULL);
+        pthread_join(tid[i], NULL);
         free(p[i]);
         p[i] = NULL;
     }
+    checkValidSudoku(threadArr);
     return 0;
 }
 
@@ -142,37 +141,105 @@ void readSudoku(char* inFile, char arr[10][10]) {
     return;
 }
 
-void* checkRow(void* arg) {
-    // Row checkers use arr[row][0-9]
-    char numbers[] = "1,2,3,4,5,6,7,8,9";
-    char currentNum;
-    int row = ((struct parameters* )arg)->row;
-
-    // Keep looping until all 9 chars are found
+void printSudoku(char arr[10][10]) {
+    puts("Sudoku Puzzle Solution is:");
     for (int i = 0; i < 9; i++) {
-        currentNum = *(((struct parameters* )arg)->arr + row*9 + i + row);
-        // Check if the current number is in the string
-        if (strchr(numbers, currentNum) != NULL) {
-            printf("current num: %c\n", currentNum);
-        } else {
-            // Invalid row, exit thread
-            
+        for (int j = 0; j < 9; j++) {
+            if (j == 8)
+                printf("%c", arr[i][j]);
+            else
+                printf("%c ", arr[i][j]);
+        }
+        printf("\n");
+    }
+    return;
+}
+
+void checkValidSudoku(int arr[3][9]) {
+    // Check threads return for validity
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 9; j++) {
+            if (arr[i][j] != 1) {
+                puts("Sudoku puzzle is invalid");
+                return;
+            }
         }
     }
+    puts("Sudoku puzzle is valid");
+}
 
-    //printf("checl row%d\n", ((struct parameters* )arg)->row);
-    //printf("ok lets check the arr\n%s\n", ((struct parameters *)arg)->arr);
+void* checkRow(void* arg) {
+    // Row checkers use arr[row][0-9]
+    char numbers[] = "123456789";
+    char currentNum;
+    char* foundChar;
+    int index;
+    int row = ((struct parameters* )arg)->row;
+
+    // Look at each number in the row and check if it is valid
+    for (int i = 0; i < 9; i++) {
+        // row * 10 is index of first value in each row
+        currentNum = *(((struct parameters* )arg)->arr + row*10 + i);
+
+        // Check if the current number is in the string
+        if ((foundChar = strchr(numbers, currentNum)) != NULL) {
+            index = (int)(foundChar - numbers);
+            memmove(&numbers[index], &numbers[index + 1], strlen(numbers) - index);
+        } else {
+            // Invalid row, exit thread
+            *(((struct parameters* )arg)->threadArr + ROWARRAY * 9 + row) = 0;
+            return NULL;
+        }
+    }
+    *(((struct parameters* )arg)->threadArr + ROWARRAY * 9 + row) = 1;
     return NULL;
 }
 
 void* checkCol(void* arg) {
     // Column checkers use arr[0-9][col]
-    //printf("check col %d\n", ((struct parameters* )arg)->col);
+    char numbers[] = "123456789";
+    char currentNum;
+    char* foundChar;
+    int index;
+    int col = ((struct parameters* )arg)->col;
+
+    // Look at each number in the column and check if it is valid
+    for (int i = 0; i < 9; i++) {
+        currentNum = *(((struct parameters* )arg)->arr + col + i*10);
+        // Check if the current number is in the string
+        if ((foundChar = strchr(numbers, currentNum)) != NULL) {
+            index = (int)(foundChar - numbers);
+            memmove(&numbers[index], &numbers[index + 1], strlen(numbers) - index);
+        } else {
+            // Invalid row, exit thread
+            *(((struct parameters* )arg)->threadArr + COLARRAY * 9 + col) = 0;
+            return NULL;
+        }
+    }
+    *(((struct parameters* )arg)->threadArr + COLARRAY * 9 + col) = 1;
     return NULL;
 }
 
 void* checkGrid(void* arg) {
-    //printf("grid row %d, ", ((struct parameters*)arg)->row);
-    //printf("col grid %d\n", ((struct parameters*)arg)->col);
+    char numbers[] = "123456789";
+    char currentNum;
+    char* foundChar;
+    int index;
+    int col = ((struct parameters* )arg)->col;
+    int row = ((struct parameters* )arg)->row;
+
+    for (int i = 0; i < 9; i++) {
+        currentNum = *(((struct parameters* )arg)->arr + (col + i%3) + ((row + i/3)*10));
+        // Check if the current number is in the string
+        if ((foundChar = strchr(numbers, currentNum)) != NULL) {
+            index = (int)(foundChar - numbers);
+            memmove(&numbers[index], &numbers[index + 1], strlen(numbers) - index);
+        } else {
+            // Invalid row, exit thread
+            *(((struct parameters* )arg)->threadArr + GRIDARRAY*9 + col/3 + row) = 0;
+            return NULL;
+        }
+    }
+    *(((struct parameters* )arg)->threadArr + GRIDARRAY*9 + col/3 + row) = 1;
     return NULL;
 }
