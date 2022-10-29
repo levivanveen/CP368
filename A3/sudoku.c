@@ -32,6 +32,7 @@ void checkValidSudoku(int arr[3][9]);
 void* checkRow(void* arg);
 void* checkCol(void* arg);
 void* checkGrid(void* arg);
+char* findChar(char* numbers, char currentNum);
 
 int main(int argc, char *argv[]) {
     // Confirm user gave args
@@ -172,24 +173,17 @@ void* checkRow(void* arg) {
     // Row checkers use arr[row][0-9]
     char numbers[] = "123456789";
     char currentNum;
-    char* foundChar;
-    int index;
     int row = ((struct parameters* )arg)->row;
 
-    // Look at each number in the row and check if it is valid
     for (int i = 0; i < 9; i++) {
-        // row * 10 is index of first value in each row
+        // Row * 10 brings to row, add i to bring to index in row
         currentNum = *(((struct parameters* )arg)->arr + row*10 + i);
-
-        // Check if the current number is in the string
-        if ((foundChar = strchr(numbers, currentNum)) != NULL) {
-            index = (int)(foundChar - numbers);
-            memmove(&numbers[index], &numbers[index + 1], strlen(numbers) - index);
-        } else {
+        if (findChar(numbers, currentNum) == NULL) {
             // Invalid row, exit thread
             *(((struct parameters* )arg)->threadArr + ROWARRAY * 9 + row) = 0;
             return NULL;
-        }
+        } 
+        
     }
     *(((struct parameters* )arg)->threadArr + ROWARRAY * 9 + row) = 1;
     return NULL;
@@ -199,22 +193,16 @@ void* checkCol(void* arg) {
     // Column checkers use arr[0-9][col]
     char numbers[] = "123456789";
     char currentNum;
-    char* foundChar;
-    int index;
     int col = ((struct parameters* )arg)->col;
 
-    // Look at each number in the column and check if it is valid
     for (int i = 0; i < 9; i++) {
+        // i * 10 brings to row, add col to bring to col index in row
         currentNum = *(((struct parameters* )arg)->arr + col + i*10);
-        // Check if the current number is in the string
-        if ((foundChar = strchr(numbers, currentNum)) != NULL) {
-            index = (int)(foundChar - numbers);
-            memmove(&numbers[index], &numbers[index + 1], strlen(numbers) - index);
-        } else {
-            // Invalid row, exit thread
+        if (findChar(numbers, currentNum) == NULL) {
+            // Invalid col, exit thread
             *(((struct parameters* )arg)->threadArr + COLARRAY * 9 + col) = 0;
             return NULL;
-        }
+        } 
     }
     *(((struct parameters* )arg)->threadArr + COLARRAY * 9 + col) = 1;
     return NULL;
@@ -223,23 +211,31 @@ void* checkCol(void* arg) {
 void* checkGrid(void* arg) {
     char numbers[] = "123456789";
     char currentNum;
-    char* foundChar;
-    int index;
     int col = ((struct parameters* )arg)->col;
     int row = ((struct parameters* )arg)->row;
 
     for (int i = 0; i < 9; i++) {
+        /**
+         * col can be 0,3,6 & i%3 can be 0,1,2
+         */ 
         currentNum = *(((struct parameters* )arg)->arr + (col + i%3) + ((row + i/3)*10));
-        // Check if the current number is in the string
-        if ((foundChar = strchr(numbers, currentNum)) != NULL) {
-            index = (int)(foundChar - numbers);
-            memmove(&numbers[index], &numbers[index + 1], strlen(numbers) - index);
-        } else {
-            // Invalid row, exit thread
+        if (findChar(numbers, currentNum) == NULL) {
+            // Invalid grid, exit thread
             *(((struct parameters* )arg)->threadArr + GRIDARRAY*9 + col/3 + row) = 0;
             return NULL;
-        }
+        } 
+
     }
     *(((struct parameters* )arg)->threadArr + GRIDARRAY*9 + col/3 + row) = 1;
     return NULL;
 }
+
+char* findChar(char* string, char currentNum) {
+    char* foundChar;
+    int index;
+    if ((foundChar = strchr(string, currentNum)) != NULL) {
+        index = (int)(foundChar - string);
+        memmove(&string[index], &string[index + 1], strlen(string) - index);
+    }
+    return foundChar;
+} 
