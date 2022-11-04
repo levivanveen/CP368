@@ -1,3 +1,12 @@
+/**
+-------------------------------------------------
+Authors:    Levi Van Veen, Vandan Alpesh Thacker
+ID:         200852490, 203220140
+Email:      vanv2490@mylaurier.ca
+Version     25-10-2022
+-------------------------------------------------
+*/
+
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
