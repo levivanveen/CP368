@@ -10,11 +10,14 @@ typedef struct threadInfo{
     int burst_time;
     int waiting_time;
     int turn_around_time;
+    int completion_time;
 } threadInfo;
 
 threadInfo* readThreads(char* in_file, int *thread_arr_size);
-void calcTurnaround(threadInfo* thread_arr, int thread_arr_size);
-void calcWait(threadInfo* thread_arr, int thread_arr_size);
+float calcTurnaround(threadInfo* thread_arr, int thread_arr_size);
+float calcWait(threadInfo* thread_arr, int thread_arr_size);
+void printInfo(threadInfo* thread_arr, int thread_arr_size, float turn_average, float wait_average);
+int threadCompare(const void *v1, const void *v2);
 
 int main(int argc, char* argv[]) {
     // Confirm user gave args
@@ -33,12 +36,12 @@ int main(int argc, char* argv[]) {
     int thread_arr_size = 0;
     threadInfo* thread_arr = readThreads(in_file, &thread_arr_size);
 
-    calcTurnaround(thread_arr, thread_arr_size);
+    qsort(thread_arr, thread_arr_size, sizeof(threadInfo), threadCompare);
 
-    // Need to 
-    for (int i = 0; i < thread_arr_size; i++) {
-        printf("\n%d %d %d\n", thread_arr[i].p_id, thread_arr[i].arr_time, thread_arr[i].burst_time);
-    }
+    float turn_average = calcTurnaround(thread_arr, thread_arr_size);
+    float wait_average = calcWait(thread_arr, thread_arr_size);
+
+    printInfo(thread_arr, thread_arr_size, turn_average, wait_average);
 
     // Clean up allocated stuff and return
     free(thread_arr);
@@ -46,32 +49,64 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
-void calcTurnaround(threadInfo* thread_arr, int thread_arr_size) {
-    /*  To calculate the turnaround time
-        Do a while loop and for each thread and check when it is done
-     */
-    int finished = 0;
-    int time = 0;
-    int wait_queue[thread_arr_size];
-    int counter = 0;
+void printInfo(threadInfo* thread_arr, int thread_arr_size, float turn_average, float wait_average) {
+    printf("Thread ID       Arrival Time    Burst Time  Completion Time Turn-Around Time    Waiting Time\n");
+    for (int i = 0; i < thread_arr_size; i++) {
+        printf("%-24d%-16d%-12d%-16d%-12d%d\n", thread_arr[i].p_id, thread_arr[i].arr_time, thread_arr[i].burst_time, thread_arr[i].completion_time, thread_arr[i].turn_around_time, thread_arr[i].waiting_time);
+    }
+    printf("The average waiting time: %.2f\n", wait_average);
+    printf("The average turn-around time: %.2f\n", turn_average);
+}
+
+float calcWait(threadInfo* thread_arr, int thread_arr_size) {
+    int total_wait = 0;
+    for (int i = 0; i < thread_arr_size; i++) {
+        thread_arr[i].waiting_time = thread_arr[i].turn_around_time - thread_arr[i].burst_time;
+        total_wait += thread_arr[i].waiting_time;
+    }
+    return total_wait / (float) thread_arr_size;
+}
+
+float calcTurnaround(threadInfo* thread_arr, int thread_arr_size) {
+    const int burst_time = 0;
+    const int work_time = 1;
+    int finished = 0, worked = 0, time = 0, queue_tail = -1, queue_head = 0, turn_around_total = 0;
+    int wait_queue[thread_arr_size][2];
 
     while (!finished) {
-        printf("wow");
-        // First, we check if any new threads have arrived
-        for (int i = 0; i < thread_arr_size; i++) {
-            if (thread_arr[i].arr_time == time) {
-                wait_queue[i] = thread_arr[i].burst_time;
-                counter++;
+        // First, we check if any new threads have arrived, only if not all are in queue
+        if (queue_tail != thread_arr_size) {
+            for (int i = 0; i < thread_arr_size; i++) {
+                if (thread_arr[i].arr_time == time) {
+                    wait_queue[i][burst_time] = thread_arr[i].burst_time;
+                    wait_queue[i][work_time] = 0;
+                    queue_tail++;
+                    break;
+                }
             }
         }
-        if (counter == 6) {
-            printf("Done\n");
-            finished = 1;
+        // Now we move through the queue array to find what thread to do work on
+        worked = 0;
+        while (!worked) {
+            if (queue_head > queue_tail) {
+                finished = 1;
+                break;
+            }
+            if (wait_queue[queue_head][burst_time] > wait_queue[queue_head][work_time]) {
+                // Still work to do on thread, increment work counter
+                wait_queue[queue_head][work_time]++;
+                worked = 1;
+            } else {
+                // work is done on thread
+                turn_around_total += time - thread_arr[queue_head].arr_time;
+                thread_arr[queue_head].turn_around_time = time - thread_arr[queue_head].arr_time;
+                thread_arr[queue_head].completion_time = time;
+                queue_head++;
+            }
         }
+        time++;
     }
-    for (int i = 0; i < 6; i++) {
-        printf("ok %d\n", wait_queue[i]);
-    }
+    return turn_around_total / (float)thread_arr_size;
 }
 
 threadInfo* readThreads(char* in_file, int *thread_arr_size) {
@@ -116,7 +151,6 @@ threadInfo* readThreads(char* in_file, int *thread_arr_size) {
                     // burst_time
                     thread_arr[thread_index - 1].burst_time = num;
                     col++;
-
                     // Create room for one more threadInfo in the array
                     thread_arr = realloc(thread_arr, sizeof(threadInfo) * (thread_index + 1));
                     thread_index++;
@@ -133,4 +167,15 @@ threadInfo* readThreads(char* in_file, int *thread_arr_size) {
     c = NULL;
     *thread_arr_size = thread_index - 1;
     return thread_arr;
+}
+
+int threadCompare(const void *v1, const void *v2) {
+    const threadInfo *p1 = (threadInfo *)v1;
+    const threadInfo *p2 = (threadInfo *)v2;
+    if (p1->arr_time < p2->arr_time)
+        return -1;
+    else if (p1->arr_time > p2->arr_time)
+        return +1;
+    else
+        return 0;
 }
