@@ -11,6 +11,24 @@ Version     25-10-2022
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+sem_t running;
+
+typedef struct customer {
+    int* alloc;
+    int* need;
+    sem_t runThread; 
+} customer;
+
+typedef struct threadInfo {
+    customer *current;
+    customer *next;
+    int* available;
+    int id;
+    int resourceCount;
+} threadInfo;
 
 const int MAXINPUT = 25;
 
@@ -18,14 +36,17 @@ int** readFile(char *fileName, int resourceCount, int* processCount);
 void copyArr(int** copyThis, int** intoThis, int rows, int cols);
 int** createTwoDimArr(int rows, int cols);
 void printTwoDimArr(int** twoDimArr, int rows, int cols, char* name);
+void printArr(int* arr, int cols);
 void printStartingStats(int* available, int** maxArr, int r, int c);
 char* getInput();
 void printAvailable(int* available, int c, int newLine);
 void runBankersAlgo(int **maxArr, int **needArr, int **allocArr, int *available, int r, int c);
-int checkReq(char* input, int* available, int** needArr, int** allocArr, int r, int c);
+int checkReq(char* input, int* available, int** needArr, int r, int c);
 int safeReq(int available, int need, int request);
 int safetyAlgo(int* available, int processCount, int resourceCount, int** allocArr, int** needArr, char* input);
 int findSequence(int* sequence, int* available, int processCount, int resourceCount, int** needArr, int** allocArr);
+void freeAllocated(int* available, int* needArr, int* allocArr, int resourceCount);
+void* runCustomer(void* arg);
 
 int main(int argc, char* argv[]) {
     // Confirm user gave args
@@ -54,6 +75,8 @@ int main(int argc, char* argv[]) {
 
     // Now we have all arrays initiallized, we can run the bankers algo
     printStartingStats(available, maxArr, processCount, resourceCount);
+
+    sem_init(&running, 0, 1);
     runBankersAlgo(maxArr, needArr, allocArr, available, processCount, resourceCount);
 
     free(maxArr);
@@ -102,7 +125,10 @@ int** readFile(char *fileName, int resourceCount, int* processCount) {
     }
     return maxArr;
 }
-
+/**
+ * r is number of rows in 2d arrays, each row being a process
+ * c is number of columns in a process, each column being a resource
+ */ 
 void runBankersAlgo(int **maxArr, int **needArr, int **allocArr, int *available, int r, int c) {
     while (1) {
         char* input = getInput();
@@ -125,13 +151,55 @@ void runBankersAlgo(int **maxArr, int **needArr, int **allocArr, int *available,
                 printf("request is denied\n");
         }
         else if (strcmp(token, "Run") ==0) {
-            printf("token is Run\n");
+            int finish[r];
+            for (int i = 0; i < r; i++) {
+                finish[i] = -1;
+            }
+            if (findSequence(finish, available, r, c, needArr, allocArr) == 0)
+                printf("request is denied\n");
+            printf("Safe Sequence is: ");
+            printArr(finish, r);
+
+            //Initiallize an array of customers, and set semaphores
+            customer customers[r];
+            threadInfo *thread[r];
+            pthread_t tid[r];
+
+            for (int i = 0; i < r; i++) {
+                if (!i)
+                    sem_init(&customers[i].runThread, 0, 1);
+                else
+                    sem_init(&customers[i].runThread, 0, 0);
+            }
+            for (int i = 0; i < r; i++) {
+                thread[i] = malloc(sizeof(threadInfo));
+
+                customers[i].alloc = allocArr[finish[i]];
+                customers[i].need = needArr[finish[i]];
+                thread[i]->available = available;
+                thread[i]->current = &customers[i];
+                thread[i]->id = finish[i];
+                thread[i]->resourceCount = c;
+
+                if (i == r - 1) {
+                    thread[i]->next = NULL;
+                } else {
+                    thread[i]->next = &customers[i + 1];
+                }
+
+                pthread_create(&tid[i], NULL, runCustomer, (void *)thread[i]);
+            }
+            for (int i = 0; i < r; i++) {
+                pthread_join(tid[i], NULL);
+                free(thread[i]);
+                thread[i] = NULL;
+            }
         }
         else if (strcmp(token, "RL") ==0) {
             printf("token is RL\n");
         }
         else if (strcmp(token, "Exit") ==0) {
-            printf("User wants to exit\n");
+            printf("Exiting the program\n");
             return;
         }
         else {
@@ -142,7 +210,32 @@ void runBankersAlgo(int **maxArr, int **needArr, int **allocArr, int *available,
     }
 }
 
-int checkReq(char* input, int* available, int** needArr, int** allocArr, int r, int c) {
+void* runCustomer(void* arg) {
+    int id = ((threadInfo *)arg)->id;
+    int resourceCount = ((threadInfo *)arg)->resourceCount;
+    sem_wait(&(((threadInfo *)arg)->current->runThread));
+    printf("--> Customer/Thread %d\n", id);
+    printf("    Allocated resources: ");
+    printArr(((threadInfo *)arg)->current->alloc, resourceCount);
+    printf("    Needed: ");
+    printArr(((threadInfo *)arg)->current->need, resourceCount);
+    printf("    Available: ");
+    printArr(((threadInfo *)arg)->available, resourceCount);
+    puts("    Thread has started\n    Thread has finished");
+    //Run thread
+    puts("    Thread is releasing resources");
+    // Free allocated resources
+    freeAllocated(((threadInfo *)arg)->available, ((threadInfo *)arg)->current->need, ((threadInfo *)arg)->current->alloc, resourceCount);
+    printf("    New Available: ");
+    printArr(((threadInfo *)arg)->available, resourceCount);
+
+    // Let the next thread run
+    if (((threadInfo *)arg)->next != NULL)
+        sem_post(&(((threadInfo *)arg)->next->runThread));
+    return NULL;
+}
+
+int checkReq(char* input, int* available, int** needArr, int r, int c) {
     char* delimit = " \n";
     char* token = strtok(input, delimit);
     int processId;
@@ -202,7 +295,7 @@ int safetyAlgo(int* available, int processCount, int resourceCount, int** allocA
     // first check if safe req
     char* newInput = (char *) malloc( strlen(input) + 1 ); 
     strcpy(newInput, input);
-    int validReq = checkReq(newInput, available, needArr, allocArr, processCount, resourceCount);
+    int validReq = checkReq(newInput, available, needArr, processCount, resourceCount);
     free(newInput);
     newInput = NULL;
     if (!validReq) {
@@ -247,12 +340,6 @@ int safetyAlgo(int* available, int processCount, int resourceCount, int** allocA
         available[i] = newAvailable[i];
     }
 
-    printf("Sequence is: ");
-    for (int i = 0; i < processCount; i++) {
-        printf("%d ", finish[i]);
-    }
-    printf("\n");
-
     free(newAlloc);
     free(newNeed);
     newNeed = NULL;
@@ -272,33 +359,28 @@ int findSequence(int* sequence, int* available, int processCount, int resourceCo
         // Loop through processes to see if they can run
         for (int i = 0; i < processCount; i++) {
             // Move to next process if already recieved resources
-            printf("Sequence is: ");
-            for (int i = 0; i < processCount; i++) {
-                printf("%d ", sequence[i]);
+            int inSequence = 0;
+            for (int j = 0; j < processCount; j++) {
+                if (i == sequence[j])
+                    inSequence = 1;
             }
-            printf("\n");
-            if (sequence[i] > -1) {
+            if (inSequence)
                 continue;
-            }
+
+            // Now check if enough work to run the process
             int validSwitch = 1;
-            printf("\nprocess %d need is ", i);
-            for (int j = 0; j < resourceCount; j++) {
-                printf("%d ", needArr[i][j]);
-            }
-            printf("\nWork is ");
-            for (int j = 0; j < resourceCount; j++) {
-                printf("%d ", work[j]);
-            }
-            printf("\n");
             for (int j = 0; j < resourceCount; j++) {
                 if (work[j] < needArr[i][j]) {
                     validSwitch = 0;
                     break;
                 }
             }
+            // If enough work to run process, add it to sequence and increase work
             if (validSwitch) {
-                printf("ok process can fit work\n");
-                sequence[i] = found;
+                for (int j = 0; j < resourceCount; j++) {
+                    work[j] += allocArr[i][j];
+                }
+                sequence[found] = i;
                 foundSwitch = 1;
                 found++;
                 break;
@@ -306,11 +388,19 @@ int findSequence(int* sequence, int* available, int processCount, int resourceCo
         }
         if (!foundSwitch) {
             // Can't find any possible sequence
-            printf("Can't find any sequences, ");
+            printf("Can't find any sequence, ");
             return 0;
         }
     }
     return 1;
+}
+
+void freeAllocated(int* available, int* needArr, int* allocArr, int resourceCount) {
+    for (int i = 0; i < resourceCount; i++) {
+        available[i] = available[i] + allocArr[i];
+        needArr[i] = needArr[i] + allocArr[i];
+        allocArr[i] = 0;
+    }
 }
 
 char* getInput() {
@@ -367,4 +457,11 @@ void printTwoDimArr(int** twoDimArr, int rows, int cols, char* name) {
         printf("\n");
     }
     return;
+}
+
+void printArr(int* arr, int cols) {
+    for (int i = 0; i < cols; i++) {
+        printf("%d ", arr[i]);
+    }
+    printf("\n");
 }
