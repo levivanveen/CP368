@@ -14,8 +14,6 @@ Version     25-10-2022
 #include <pthread.h>
 #include <semaphore.h>
 
-sem_t running;
-
 typedef struct customer {
     int* alloc;
     int* need;
@@ -44,6 +42,7 @@ void runBankersAlgo(int **maxArr, int **needArr, int **allocArr, int *available,
 int checkReq(char* input, int* available, int** needArr, int r, int c);
 int safeReq(int available, int need, int request);
 int safetyAlgo(int* available, int processCount, int resourceCount, int** allocArr, int** needArr, char* input);
+int releaseResources(int* available, int processCount, int resourceCount, int** allocArr, int** needArr, char* input);
 int findSequence(int* sequence, int* available, int processCount, int resourceCount, int** needArr, int** allocArr);
 void freeAllocated(int* available, int* needArr, int* allocArr, int resourceCount);
 void* runCustomer(void* arg);
@@ -76,7 +75,6 @@ int main(int argc, char* argv[]) {
     // Now we have all arrays initiallized, we can run the bankers algo
     printStartingStats(available, maxArr, processCount, resourceCount);
 
-    sem_init(&running, 0, 1);
     runBankersAlgo(maxArr, needArr, allocArr, available, processCount, resourceCount);
 
     free(maxArr);
@@ -196,7 +194,10 @@ void runBankersAlgo(int **maxArr, int **needArr, int **allocArr, int *available,
             }
         }
         else if (strcmp(token, "RL") ==0) {
-            printf("token is RL\n");
+            if (releaseResources(available, r, c, allocArr, needArr, input))
+                printf("State is safe, and request is satisfied\n");
+            else
+                printf("request is denied\n");
         }
         else if (strcmp(token, "Exit") ==0) {
             printf("Exiting the program\n");
@@ -393,6 +394,76 @@ int findSequence(int* sequence, int* available, int processCount, int resourceCo
         }
     }
     return 1;
+}
+
+int releaseResources(int* available, int processCount, int resourceCount, int** allocArr, int** needArr, char* input) {
+    char* delimit = " \n";
+    char* token = strtok(input, delimit);
+    int processId;
+    // Skip over the first, as it is the commmand
+    if (token != NULL) token = strtok(NULL, delimit);
+    else {
+        printf("Improper usage of command, ");
+        return 0;
+    }
+    // Now get process id 
+    if (token != NULL) {
+        processId = atoi(token);
+        token = strtok(NULL, delimit);
+    } else {
+        printf("Improper usage of command, ");
+        return 0;
+    }
+    
+    // If process id is greater than row count, dont use it
+    if (processId >= processCount || processId < 0) {
+        printf("Customer doesn't exist, ");
+        return 0;
+    }
+
+    int newAvailable[resourceCount];
+    int** newAlloc = createTwoDimArr(processCount, resourceCount);
+    int** newNeed = createTwoDimArr(processCount, resourceCount);
+
+    copyArr(allocArr, newAlloc, processCount, resourceCount);
+    copyArr(needArr, newNeed, processCount, resourceCount);
+
+    int validRelease = 1;
+
+    for (int i = 0; i < resourceCount; i++) {
+        if (token == NULL) {
+            printf("Invalid usage of command, ");
+            return 0;
+        }
+        if (isdigit((int)*token)) {
+            if ((newAlloc[processId][i] - atoi(token)) >= 0) {
+                newAlloc[processId][i] = newAlloc[processId][i] - atoi(token);
+                newNeed[processId][i] = newNeed[processId][i] + atoi(token);
+                newAvailable[i] = available[i] + atoi(token);
+            } else {
+                printf("State is unsafe, ");
+                validRelease = 0;
+                break;
+            }
+        } else {
+            printf("Invalid usage of command, ");
+            validRelease = 0;
+            break;
+        }
+        token = strtok(NULL, delimit);
+    }
+
+    if(validRelease) {
+        copyArr(newAlloc, allocArr, processCount, resourceCount);
+        copyArr(newNeed, needArr, processCount, resourceCount);
+        for (int i = 0; i < resourceCount; i++) {
+           available[i] = newAvailable[i];
+        }
+        if (token != NULL) {
+            printf("Only request for resources that exist\n");
+        }
+    }
+    return validRelease;
 }
 
 void freeAllocated(int* available, int* needArr, int* allocArr, int resourceCount) {
