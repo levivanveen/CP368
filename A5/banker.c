@@ -463,6 +463,11 @@ int releaseResources(int* available, int processCount, int resourceCount, int** 
             printf("Only request for resources that exist\n");
         }
     }
+    
+    free(newAlloc);
+    free(newNeed);
+    newNeed = NULL;
+    newAlloc = NULL;
     return validRelease;
 }
 
